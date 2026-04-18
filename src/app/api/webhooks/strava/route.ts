@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { syncEvents, webhookSubscriptions } from "@/db/schema";
+import { syncEvents, providerTokens } from "@/db/schema";
 import { syncQueue } from "@/lib/queue/syncWorker";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 // Strava webhook verification (GET)
 export async function GET(req: NextRequest) {
@@ -28,24 +28,29 @@ export async function POST(req: NextRequest) {
   const stravaAthleteId = String(body.owner_id);
   const stravaActivityId = body.object_id as number;
 
-  // Find which user this athlete belongs to
-  const sub = await db.query.webhookSubscriptions.findFirst({
-    where: eq(webhookSubscriptions.stravaSubId, body.subscription_id),
-    with: { user: true },
+  // Find the user who owns this athlete ID
+  const token = await db.query.providerTokens.findFirst({
+    where: and(
+      eq(providerTokens.provider, "strava"),
+      eq(providerTokens.athleteId, stravaAthleteId)
+    ),
   });
 
-  if (!sub) return NextResponse.json({ ok: true });
+  if (!token) return NextResponse.json({ ok: true });
 
-  const userId = sub.userId;
+  const userId = token.userId;
 
-  // Create a pending sync record
-  await db.insert(syncEvents).values({
-    userId,
-    stravaActivityId,
-    status: "pending",
+  // Deduplicate: skip if already queued
+  const existing = await db.query.syncEvents.findFirst({
+    where: and(
+      eq(syncEvents.userId, userId),
+      eq(syncEvents.stravaActivityId, stravaActivityId)
+    ),
   });
+  if (existing) return NextResponse.json({ ok: true });
 
-  // Enqueue the sync job
+  await db.insert(syncEvents).values({ userId, stravaActivityId, status: "pending" });
+
   await syncQueue.add("sync", { userId, stravaActivityId }, {
     jobId: `${userId}-${stravaActivityId}`,
     removeOnComplete: true,

@@ -5,10 +5,15 @@ import { providerTokens, syncEvents } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import Link from "next/link";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ connected?: string; error?: string }>;
+}) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
+  const { connected, error } = await searchParams;
   const userId = session.user.id!;
 
   const [tokens, recentSyncs] = await Promise.all([
@@ -34,7 +39,17 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {!allConnected && (
+      {connected && (
+        <div className="bg-green-950 border border-green-800 rounded-xl p-4 text-sm text-green-300">
+          {connected === "strava" ? "Strava" : "Garmin Connect"} connected successfully.
+        </div>
+      )}
+      {error && (
+        <div className="bg-red-950 border border-red-800 rounded-xl p-4 text-sm text-red-300">
+          Connection failed. Please try again.
+        </div>
+      )}
+      {!allConnected && !connected && (
         <div className="bg-orange-950 border border-orange-800 rounded-xl p-4 text-sm text-orange-300">
           Connect both accounts below to start syncing your workouts automatically.
         </div>
