@@ -1,20 +1,19 @@
 import axios from "axios";
-import FormData from "form-data";
 
 const UPLOAD_URL = "https://connectapi.garmin.com/upload-service/upload";
 
 export class GarminClient {
   constructor(private accessToken: string) {}
 
-  async uploadFitFile(fitBuffer: Buffer, filename: string): Promise<{ id: string }> {
+  async uploadActivity(content: string, filename: string): Promise<{ id: string }> {
     const form = new FormData();
-    form.append("file", fitBuffer, { filename, contentType: "application/octet-stream" });
+    const blob = new Blob([content], { type: "application/octet-stream" });
+    form.append("file", blob, filename);
 
     const { data } = await axios.post(UPLOAD_URL, form, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
-        "NK": "NT",
-        ...form.getHeaders(),
+        NK: "NT",
       },
     });
 

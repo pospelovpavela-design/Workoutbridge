@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { syncEvents, providerTokens } from "@/db/schema";
 import { StravaClient } from "@/lib/strava/client";
 import { GarminClient } from "@/lib/garmin/client";
-import { convertToFit } from "@/lib/fit/converter";
+import { convertToTcx } from "@/lib/fit/converter";
 import { eq, and } from "drizzle-orm";
 
 export const SYNC_QUEUE = "strava-garmin-sync";
@@ -49,12 +49,12 @@ export function startSyncWorker() {
         strava.getActivityStreams(stravaActivityId),
       ]);
 
-      const fitBuffer = convertToFit(activity, streams);
+      const tcxContent = convertToTcx(activity, streams);
 
       const garmin = new GarminClient(garminToken.accessToken);
-      const { id: garminActivityId } = await garmin.uploadFitFile(
-        fitBuffer,
-        `strava_${stravaActivityId}.fit`
+      const { id: garminActivityId } = await garmin.uploadActivity(
+        tcxContent,
+        `strava_${stravaActivityId}.tcx`
       );
 
       await db
@@ -69,8 +69,6 @@ export function startSyncWorker() {
     },
     {
       connection,
-      attempts: 3,
-      backoff: { type: "exponential", delay: 2000 },
     }
   );
 

@@ -1,24 +1,26 @@
-import { FitWriter } from "fit-file-writer";
 import type { StravaActivity, StravaStream } from "../strava/client";
 
 const SPORT_MAP: Record<string, string> = {
-  Run: "running",
-  Ride: "cycling",
-  Walk: "walking",
-  Swim: "swimming",
-  Hike: "hiking",
-  VirtualRide: "cycling",
-  VirtualRun: "running",
+  Run: "Running",
+  Ride: "Biking",
+  Walk: "Walking",
+  Swim: "Swimming",
+  Hike: "Hiking",
+  VirtualRide: "Biking",
+  VirtualRun: "Running",
 };
 
-export function convertToFit(
+function isoZ(d: Date) {
+  return d.toISOString();
+}
+
+export function convertToTcx(
   activity: StravaActivity,
   streams: Record<string, StravaStream>
-): Buffer {
-  const writer = new FitWriter();
-
+): string {
   const startTime = new Date(activity.start_date);
-  const sport = SPORT_MAP[activity.sport_type] ?? "generic";
+  const sport = SPORT_MAP[activity.sport_type] ?? "Other";
+
   const timeStream = streams["time"]?.data ?? [];
   const latlngStream = streams["latlng"]?.data as unknown as [number, number][] ?? [];
   const altStream = streams["altitude"]?.data ?? [];
@@ -26,61 +28,44 @@ export function convertToFit(
   const cadenceStream = streams["cadence"]?.data ?? [];
   const wattsStream = streams["watts"]?.data ?? [];
 
-  writer.writeFileId({
-    type: "activity",
-    manufacturer: "development",
-    product: 0,
-    time_created: startTime,
+  const trackpoints = timeStream.map((t, i) => {
+    const ts = new Date(startTime.getTime() + t * 1000);
+    const lat = latlngStream[i]?.[0];
+    const lng = latlngStream[i]?.[1];
+    const alt = altStream[i];
+    const hr = hrStream[i];
+    const cad = cadenceStream[i];
+    const watts = wattsStream[i];
+
+    return `      <Trackpoint>
+        <Time>${isoZ(ts)}</Time>
+        ${lat != null && lng != null ? `<Position><LatitudeDegrees>${lat}</LatitudeDegrees><LongitudeDegrees>${lng}</LongitudeDegrees></Position>` : ""}
+        ${alt != null ? `<AltitudeMeters>${alt.toFixed(1)}</AltitudeMeters>` : ""}
+        ${hr != null ? `<HeartRateBpm><Value>${Math.round(hr)}</Value></HeartRateBpm>` : ""}
+        ${cad != null ? `<Cadence>${Math.round(cad)}</Cadence>` : ""}
+        ${watts != null ? `<Extensions><ns3:TPX><ns3:Watts>${Math.round(watts)}</ns3:Watts></ns3:TPX></Extensions>` : ""}
+      </Trackpoint>`;
   });
 
-  writer.writeActivity({
-    timestamp: startTime,
-    total_timer_time: activity.elapsed_time,
-    num_sessions: 1,
-    type: "manual",
-    event: "activity",
-    event_type: "stop",
-  });
-
-  writer.writeSession({
-    timestamp: startTime,
-    start_time: startTime,
-    sport,
-    total_elapsed_time: activity.elapsed_time,
-    total_timer_time: activity.moving_time,
-    total_distance: activity.distance,
-    total_ascent: Math.round(activity.total_elevation_gain),
-    avg_heart_rate: activity.average_heartrate ? Math.round(activity.average_heartrate) : undefined,
-    avg_cadence: activity.average_cadence ? Math.round(activity.average_cadence) : undefined,
-    avg_power: activity.average_watts ? Math.round(activity.average_watts) : undefined,
-    event: "session",
-    event_type: "stop",
-  });
-
-  writer.writeLap({
-    timestamp: startTime,
-    start_time: startTime,
-    total_elapsed_time: activity.elapsed_time,
-    total_distance: activity.distance,
-    event: "lap",
-    event_type: "stop",
-  });
-
-  for (let i = 0; i < timeStream.length; i++) {
-    const ts = new Date(startTime.getTime() + timeStream[i] * 1000);
-    const record: Record<string, unknown> = { timestamp: ts };
-
-    if (latlngStream[i]) {
-      record.position_lat = latlngStream[i][0];
-      record.position_long = latlngStream[i][1];
-    }
-    if (altStream[i] !== undefined) record.altitude = altStream[i];
-    if (hrStream[i] !== undefined) record.heart_rate = Math.round(hrStream[i]);
-    if (cadenceStream[i] !== undefined) record.cadence = Math.round(cadenceStream[i]);
-    if (wattsStream[i] !== undefined) record.power = Math.round(wattsStream[i]);
-
-    writer.writeRecord(record);
-  }
-
-  return Buffer.from(writer.finish());
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<TrainingCenterDatabase
+  xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"
+  xmlns:ns3="http://www.garmin.com/xmlschemas/ActivityExtension/v2">
+  <Activities>
+    <Activity Sport="${sport}">
+      <Id>${isoZ(startTime)}</Id>
+      <Lap StartTime="${isoZ(startTime)}">
+        <TotalTimeSeconds>${activity.elapsed_time}</TotalTimeSeconds>
+        <DistanceMeters>${activity.distance.toFixed(1)}</DistanceMeters>
+        ${activity.average_heartrate ? `<AverageHeartRateBpm><Value>${Math.round(activity.average_heartrate)}</Value></AverageHeartRateBpm>` : ""}
+        <Intensity>Active</Intensity>
+        <TriggerMethod>Manual</TriggerMethod>
+        <Track>
+${trackpoints.join("\n")}
+        </Track>
+      </Lap>
+      <Notes>${activity.name}</Notes>
+    </Activity>
+  </Activities>
+</TrainingCenterDatabase>`;
 }

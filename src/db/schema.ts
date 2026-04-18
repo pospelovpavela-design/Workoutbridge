@@ -1,9 +1,10 @@
-import { pgTable, uuid, text, bigint, timestamptz, unique } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, bigint, timestamp, unique } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").unique().notNull(),
-  createdAt: timestamptz("created_at").defaultNow(),
+  passwordHash: text("password_hash").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const providerTokens = pgTable(
@@ -16,10 +17,10 @@ export const providerTokens = pgTable(
     provider: text("provider").notNull(), // 'strava' | 'garmin'
     accessToken: text("access_token").notNull(),
     refreshToken: text("refresh_token"),
-    expiresAt: timestamptz("expires_at"),
+    expiresAt: timestamp("expires_at"),
     athleteId: text("athlete_id"),
-    createdAt: timestamptz("created_at").defaultNow(),
-    updatedAt: timestamptz("updated_at").defaultNow(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
   },
   (t) => [unique().on(t.userId, t.provider)]
 );
@@ -33,7 +34,7 @@ export const syncEvents = pgTable("sync_events", {
   garminActivityId: text("garmin_activity_id"),
   status: text("status").notNull(), // 'pending' | 'success' | 'error'
   errorMessage: text("error_message"),
-  syncedAt: timestamptz("synced_at").defaultNow(),
+  syncedAt: timestamp("synced_at").defaultNow(),
 });
 
 export const webhookSubscriptions = pgTable("webhook_subscriptions", {
@@ -42,5 +43,5 @@ export const webhookSubscriptions = pgTable("webhook_subscriptions", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   stravaSubId: bigint("strava_sub_id", { mode: "number" }),
-  createdAt: timestamptz("created_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
 });

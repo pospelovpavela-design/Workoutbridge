@@ -49,6 +49,8 @@ export async function POST(req: NextRequest) {
   await syncQueue.add("sync", { userId, stravaActivityId }, {
     jobId: `${userId}-${stravaActivityId}`,
     removeOnComplete: true,
+    attempts: 3,
+    backoff: { type: "exponential", delay: 2000 },
   });
 
   return NextResponse.json({ ok: true });

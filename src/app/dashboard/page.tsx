@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { providerTokens, syncEvents } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+import Link from "next/link";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -11,63 +12,88 @@ export default async function DashboardPage() {
   const userId = session.user.id!;
 
   const [tokens, recentSyncs] = await Promise.all([
-    db.query.providerTokens.findMany({ where: eq(providerTokens.userId, userId) }),
-    db.query.syncEvents.findMany({
-      where: eq(syncEvents.userId, userId),
-      orderBy: [desc(syncEvents.syncedAt)],
-      limit: 10,
-    }),
+    db.select().from(providerTokens).where(eq(providerTokens.userId, userId)),
+    db
+      .select()
+      .from(syncEvents)
+      .where(eq(syncEvents.userId, userId))
+      .orderBy(desc(syncEvents.syncedAt))
+      .limit(10),
   ]);
 
   const stravaConnected = tokens.some((t) => t.provider === "strava");
   const garminConnected = tokens.some((t) => t.provider === "garmin");
+  const allConnected = stravaConnected && garminConnected;
 
   return (
-    <main className="max-w-3xl mx-auto p-8 space-y-8">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+    <main className="max-w-3xl mx-auto px-6 py-10 space-y-10">
+      <div>
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <p className="text-gray-500 text-sm mt-1">
+          {session.user.email}
+        </p>
+      </div>
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-gray-700">Connections</h2>
-        <div className="grid grid-cols-2 gap-4">
+      {!allConnected && (
+        <div className="bg-orange-950 border border-orange-800 rounded-xl p-4 text-sm text-orange-300">
+          Connect both accounts below to start syncing your workouts automatically.
+        </div>
+      )}
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Connections</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <ConnectionCard
             name="Strava"
             connected={stravaConnected}
             connectHref="/connect/strava"
-            color="bg-orange-500"
+            dotColor="bg-orange-500"
           />
           <ConnectionCard
             name="Garmin Connect"
             connected={garminConnected}
             connectHref="/connect/garmin"
-            color="bg-blue-600"
+            dotColor="bg-blue-500"
           />
         </div>
         {garminConnected && (
-          <p className="text-sm text-gray-500">
-            Make sure Nike Run Club is connected in{" "}
+          <p className="text-xs text-gray-600 pt-1">
+            Make sure{" "}
             <a
               href="https://connect.garmin.com/modern/settings/connectedApps"
               target="_blank"
-              className="underline text-blue-600"
+              rel="noopener noreferrer"
+              className="text-blue-500 underline"
             >
-              Garmin Connected Apps
-            </a>
-            .
+              Nike Run Club is connected in Garmin
+            </a>{" "}
+            — that&apos;s where the final push to Nike happens.
           </p>
         )}
       </section>
 
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-gray-700">Recent Syncs</h2>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Recent Syncs</h2>
+          {recentSyncs.length > 0 && (
+            <Link href="/sync-log" className="text-xs text-orange-400 hover:underline">
+              View all
+            </Link>
+          )}
+        </div>
         {recentSyncs.length === 0 ? (
-          <p className="text-gray-400 text-sm">No syncs yet. Connect your accounts to get started.</p>
+          <p className="text-gray-600 text-sm py-6 text-center border border-gray-800 rounded-xl">
+            No syncs yet — connect your accounts and go for a run!
+          </p>
         ) : (
-          <ul className="divide-y divide-gray-100 rounded-lg border">
+          <ul className="divide-y divide-gray-800 border border-gray-800 rounded-xl overflow-hidden">
             {recentSyncs.map((s) => (
-              <li key={s.id} className="flex items-center justify-between px-4 py-3 text-sm">
-                <span className="font-mono text-gray-600">#{s.stravaActivityId}</span>
+              <li key={s.id} className="flex items-center justify-between px-4 py-3 text-sm bg-gray-900">
+                <span className="font-mono text-gray-400 text-xs">#{s.stravaActivityId}</span>
                 <StatusBadge status={s.status} />
-                <span className="text-gray-400">{s.syncedAt?.toLocaleDateString()}</span>
+                <span className="text-gray-600 text-xs">
+                  {s.syncedAt?.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </span>
               </li>
             ))}
           </ul>
@@ -78,36 +104,41 @@ export default async function DashboardPage() {
 }
 
 function ConnectionCard({
-  name, connected, connectHref, color,
+  name,
+  connected,
+  connectHref,
+  dotColor,
 }: {
   name: string;
   connected: boolean;
   connectHref: string;
-  color: string;
+  dotColor: string;
 }) {
   return (
-    <div className="border rounded-lg p-4 flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <span className={`w-3 h-3 rounded-full ${connected ? color : "bg-gray-300"}`} />
-        <span className="font-medium">{name}</span>
+    <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 flex items-center justify-between">
+      <div className="flex items-center gap-2.5">
+        <span className={`w-2.5 h-2.5 rounded-full ${connected ? dotColor : "bg-gray-700"}`} />
+        <span className="font-medium text-sm">{name}</span>
       </div>
       {connected ? (
-        <span className="text-xs text-green-600 font-medium">Connected</span>
+        <span className="text-xs text-green-500 font-medium">Connected</span>
       ) : (
-        <a href={connectHref} className="text-xs text-blue-600 underline">Connect</a>
+        <Link href={connectHref} className="text-xs text-orange-400 hover:underline font-medium">
+          Connect
+        </Link>
       )}
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    success: "bg-green-100 text-green-700",
-    error: "bg-red-100 text-red-700",
-    pending: "bg-yellow-100 text-yellow-700",
+  const cls: Record<string, string> = {
+    success: "bg-green-900 text-green-400",
+    error: "bg-red-900 text-red-400",
+    pending: "bg-yellow-900 text-yellow-400",
   };
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${styles[status] ?? "bg-gray-100 text-gray-700"}`}>
+    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls[status] ?? "bg-gray-800 text-gray-400"}`}>
       {status}
     </span>
   );
