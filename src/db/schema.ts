@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, bigint, timestamp, unique } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, bigint, integer, timestamp, unique } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -25,16 +25,20 @@ export const providerTokens = pgTable(
   (t) => [unique().on(t.userId, t.provider)]
 );
 
+// status: 'pending' | 'processing' | 'success' | 'error'
 export const syncEvents = pgTable("sync_events", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   stravaActivityId: bigint("strava_activity_id", { mode: "number" }).notNull(),
+  activityName: text("activity_name"),
   garminActivityId: text("garmin_activity_id"),
-  status: text("status").notNull(), // 'pending' | 'success' | 'error'
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
   errorMessage: text("error_message"),
   syncedAt: timestamp("synced_at").defaultNow(),
+  lastAttemptedAt: timestamp("last_attempted_at"),
 });
 
 export const webhookSubscriptions = pgTable("webhook_subscriptions", {
