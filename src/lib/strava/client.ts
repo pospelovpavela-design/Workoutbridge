@@ -23,6 +23,7 @@ export type StravaActivity = {
   average_heartrate?: number;
   average_cadence?: number;
   average_watts?: number;
+  calories?: number;
 };
 
 export class StravaClient {
@@ -36,7 +37,7 @@ export class StravaClient {
   }
 
   async getActivityStreams(id: number): Promise<Record<string, StravaStream>> {
-    const keys = "time,latlng,altitude,heartrate,cadence,watts,velocity_smooth";
+    const keys = "time,latlng,altitude,heartrate,cadence,watts,distance";
     const { data } = await axios.get(`${BASE}/activities/${id}/streams`, {
       params: { keys, key_by_type: true },
       headers: { Authorization: `Bearer ${this.accessToken}` },

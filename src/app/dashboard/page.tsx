@@ -71,20 +71,7 @@ export default async function DashboardPage({
             dotColor="bg-blue-500"
           />
         </div>
-        {garminConnected && (
-          <p className="text-xs text-gray-600 pt-1">
-            Make sure{" "}
-            <a
-              href="https://connect.garmin.com/modern/settings/connectedApps"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-500 underline"
-            >
-              Nike Run Club is connected in Garmin
-            </a>{" "}
-            — that&apos;s where the final push to Nike happens.
-          </p>
-        )}
+        {garminConnected && <NrcOnboardingCard />}
       </section>
 
       <section className="space-y-3">
@@ -142,6 +129,35 @@ function ConnectionCard({
           Connect
         </Link>
       )}
+    </div>
+  );
+}
+
+function NrcOnboardingCard() {
+  return (
+    <div className="mt-3 bg-gray-900 border border-gray-700 rounded-xl px-4 py-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Last step</span>
+        <span className="h-px flex-1 bg-gray-800" />
+      </div>
+      <p className="text-sm text-gray-300">
+        Link <strong className="text-white">Nike Run Club</strong> inside Garmin Connect to complete the chain.
+        Garmin will automatically push every new activity to NRC — no extra steps needed.
+      </p>
+      <ol className="text-xs text-gray-500 space-y-1 list-decimal list-inside">
+        <li>Open Garmin Connect app or website</li>
+        <li>Go to <span className="text-gray-400">More → Connected Apps</span></li>
+        <li>Find <span className="text-gray-400">Nike Run Club</span> and tap Connect</li>
+        <li>Sign in to your Nike account</li>
+      </ol>
+      <a
+        href="https://connect.garmin.com/modern/settings/connectedApps"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-block text-xs font-medium text-orange-400 hover:underline"
+      >
+        Open Garmin Connected Apps →
+      </a>
     </div>
   );
 }
