@@ -1,11 +1,13 @@
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/session";
-import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { randomBytes } from "crypto";
 
-export default async function ConnectGarminPage() {
+export async function GET(req: NextRequest) {
   const session = await auth();
-  if (!session?.user) redirect("/login");
+  if (!session?.user) {
+    return NextResponse.redirect(new URL("/login", req.url));
+  }
 
   const nonce = randomBytes(16).toString("hex");
   const state = Buffer.from(JSON.stringify({ nonce, userId: session.user.id })).toString("base64url");
@@ -27,5 +29,5 @@ export default async function ConnectGarminPage() {
     state,
   });
 
-  redirect(`https://sso.garmin.com/sso/oauth2/authorize?${params}`);
+  return NextResponse.redirect(`https://sso.garmin.com/sso/oauth2/authorize?${params}`);
 }
