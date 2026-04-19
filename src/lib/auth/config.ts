@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 export const authConfig: NextAuthConfig = {
+  trustHost: true,
   providers: [
     Credentials({
       credentials: {
