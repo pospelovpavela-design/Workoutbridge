@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { syncEvents, providerTokens } from "@/db/schema";
-import { syncQueue } from "@/lib/queue/syncWorker";
 import { eq, and } from "drizzle-orm";
 
 // Strava webhook verification (GET)
@@ -28,7 +27,6 @@ export async function POST(req: NextRequest) {
   const stravaAthleteId = String(body.owner_id);
   const stravaActivityId = body.object_id as number;
 
-  // Find the user who owns this athlete ID
   const token = await db.query.providerTokens.findFirst({
     where: and(
       eq(providerTokens.provider, "strava"),
@@ -38,25 +36,11 @@ export async function POST(req: NextRequest) {
 
   if (!token) return NextResponse.json({ ok: true });
 
-  const userId = token.userId;
-
-  // Deduplicate: skip if already queued
-  const existing = await db.query.syncEvents.findFirst({
-    where: and(
-      eq(syncEvents.userId, userId),
-      eq(syncEvents.stravaActivityId, stravaActivityId)
-    ),
-  });
-  if (existing) return NextResponse.json({ ok: true });
-
-  await db.insert(syncEvents).values({ userId, stravaActivityId, status: "pending" });
-
-  await syncQueue.add("sync", { userId, stravaActivityId }, {
-    jobId: `${userId}-${stravaActivityId}`,
-    removeOnComplete: true,
-    attempts: 3,
-    backoff: { type: "exponential", delay: 2000 },
-  });
+  // Insert pending job — cron picks it up within 1 minute
+  await db
+    .insert(syncEvents)
+    .values({ userId: token.userId, stravaActivityId, status: "pending" })
+    .onConflictDoNothing();
 
   return NextResponse.json({ ok: true });
 }
