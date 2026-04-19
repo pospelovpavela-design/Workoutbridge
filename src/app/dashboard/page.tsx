@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { providerTokens, syncEvents } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+// Garmin uses email/password from env vars — no OAuth DB token needed
 import Link from "next/link";
 
 export default async function DashboardPage({
@@ -27,8 +28,8 @@ export default async function DashboardPage({
   ]);
 
   const stravaConnected = tokens.some((t) => t.provider === "strava");
-  const garminConnected = tokens.some((t) => t.provider === "garmin");
-  const allConnected = stravaConnected && garminConnected;
+  const garminConfigured = !!(process.env.GARMIN_EMAIL && process.env.GARMIN_PASSWORD);
+  const allConnected = stravaConnected && garminConfigured;
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-10 space-y-10">
@@ -64,14 +65,9 @@ export default async function DashboardPage({
             connectHref="/connect/strava"
             dotColor="bg-orange-500"
           />
-          <ConnectionCard
-            name="Garmin Connect"
-            connected={garminConnected}
-            connectHref="/connect/garmin"
-            dotColor="bg-blue-500"
-          />
+          <GarminCard configured={garminConfigured} />
         </div>
-        {garminConnected && <NrcOnboardingCard />}
+        {garminConfigured && <NrcOnboardingCard />}
       </section>
 
       <section className="space-y-3">
@@ -128,6 +124,22 @@ function ConnectionCard({
         <Link href={connectHref} className="text-xs text-orange-400 hover:underline font-medium">
           Connect
         </Link>
+      )}
+    </div>
+  );
+}
+
+function GarminCard({ configured }: { configured: boolean }) {
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 flex items-center justify-between">
+      <div className="flex items-center gap-2.5">
+        <span className={`w-2.5 h-2.5 rounded-full ${configured ? "bg-blue-500" : "bg-gray-700"}`} />
+        <span className="font-medium text-sm">Garmin Connect</span>
+      </div>
+      {configured ? (
+        <span className="text-xs text-green-500 font-medium">Configured</span>
+      ) : (
+        <span className="text-xs text-gray-500">Add GARMIN_EMAIL + GARMIN_PASSWORD to .env.local</span>
       )}
     </div>
   );

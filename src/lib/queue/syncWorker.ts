@@ -5,7 +5,7 @@ import { syncEvents } from "@/db/schema";
 import { StravaClient } from "@/lib/strava/client";
 import { GarminClient, GarminUploadError } from "@/lib/garmin/client";
 import { convertToTcx } from "@/lib/fit/converter";
-import { getValidStravaToken, getValidGarminToken } from "@/lib/strava/token";
+import { getValidStravaToken } from "@/lib/strava/token";
 import { eq, and } from "drizzle-orm";
 
 export const SYNC_QUEUE = "strava-garmin-sync";
@@ -23,10 +23,7 @@ export function startSyncWorker() {
         stravaActivityId: number;
       };
 
-      const [stravaToken, garminToken] = await Promise.all([
-        getValidStravaToken(userId),
-        getValidGarminToken(userId),
-      ]);
+      const stravaToken = await getValidStravaToken(userId);
 
       const strava = new StravaClient(stravaToken);
       const [activity, streams] = await Promise.all([
@@ -35,7 +32,7 @@ export function startSyncWorker() {
       ]);
 
       const tcxContent = convertToTcx(activity, streams);
-      const garmin = new GarminClient(garminToken);
+      const garmin = new GarminClient();
 
       let garminActivityId: string;
       try {
@@ -46,7 +43,6 @@ export function startSyncWorker() {
         garminActivityId = result.id;
       } catch (err) {
         if (err instanceof GarminUploadError && err.code === "duplicate") {
-          // Already in Garmin — treat as success
           await db
             .update(syncEvents)
             .set({ status: "success", garminActivityId: "duplicate" })
@@ -55,9 +51,8 @@ export function startSyncWorker() {
             );
           return;
         }
-        // For auth errors don't retry
         if (err instanceof GarminUploadError && err.code === "auth") {
-          throw err; // will hit failed handler, no point retrying
+          throw err;
         }
         throw err;
       }

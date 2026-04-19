@@ -1,6 +1,6 @@
-import axios, { AxiosError } from "axios";
+import { getGarminSessionCookie, invalidateGarminSession } from "./auth";
 
-const UPLOAD_URL = "https://connectapi.garmin.com/upload-service/upload";
+const UPLOAD_URL = "https://connect.garmin.com/modern/proxy/upload-service/upload/.tcx";
 
 export class GarminUploadError extends Error {
   constructor(
@@ -13,46 +13,41 @@ export class GarminUploadError extends Error {
 }
 
 export class GarminClient {
-  constructor(private accessToken: string) {}
-
   async uploadActivity(content: string, filename: string): Promise<{ id: string }> {
-    const form = new FormData();
-    const blob = new Blob([content], { type: "application/octet-stream" });
-    form.append("file", blob, filename);
-
-    let data: Record<string, unknown>;
+    let cookie: string;
     try {
-      const res = await axios.post(UPLOAD_URL, form, {
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          NK: "NT",
-        },
-      });
-      data = res.data;
+      cookie = await getGarminSessionCookie();
     } catch (err) {
-      const axErr = err as AxiosError<{ detailedImportResult?: { failures?: { messages?: { content: string }[] }[] } }>;
-      const status = axErr.response?.status;
-
-      if (status === 401 || status === 403) throw new GarminUploadError("Garmin token invalid", "auth");
-      if (status === 429) throw new GarminUploadError("Garmin rate limit exceeded", "rate_limit");
-
-      // Garmin returns 202 with a failure in the body for duplicate/bad file
-      // but may also return 400 for parse errors
-      const failures = axErr.response?.data?.detailedImportResult?.failures;
-      if (failures?.length) {
-        const msg = failures[0]?.messages?.[0]?.content ?? "";
-        if (msg.toLowerCase().includes("duplicate")) {
-          throw new GarminUploadError("Activity already exists in Garmin", "duplicate");
-        }
-        throw new GarminUploadError(`Garmin rejected file: ${msg}`, "invalid_file");
-      }
-
-      throw new GarminUploadError(`Garmin upload failed: ${axErr.message}`, "unknown");
+      throw new GarminUploadError(
+        err instanceof Error ? err.message : "Garmin auth failed",
+        "auth"
+      );
     }
 
-    // Check for failure embedded in a 2xx response (Garmin's quirk)
+    const form = new FormData();
+    form.append("file", new Blob([content], { type: "application/octet-stream" }), filename);
+
+    const res = await fetch(UPLOAD_URL, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        NK: "NT",
+        "X-App-Ver": "4.7.0.0",
+        "User-Agent": "Mozilla/5.0 (Workoutbridge)",
+      },
+      body: form,
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      invalidateGarminSession();
+      throw new GarminUploadError("Garmin session expired — will retry with fresh login", "auth");
+    }
+    if (res.status === 429) throw new GarminUploadError("Garmin rate limit exceeded", "rate_limit");
+
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
     const result = data?.detailedImportResult as Record<string, unknown> | undefined;
     const failures = result?.failures as { messages?: { content: string }[] }[] | undefined;
+
     if (failures?.length) {
       const msg = failures[0]?.messages?.[0]?.content ?? "";
       if (msg.toLowerCase().includes("duplicate")) {
@@ -60,6 +55,8 @@ export class GarminClient {
       }
       throw new GarminUploadError(`Garmin rejected file: ${msg}`, "invalid_file");
     }
+
+    if (!res.ok) throw new GarminUploadError(`Garmin upload failed: ${res.status}`, "unknown");
 
     const id = String(result?.uploadId ?? data?.uploadId ?? "");
     if (!id) throw new GarminUploadError("No upload ID returned by Garmin", "unknown");

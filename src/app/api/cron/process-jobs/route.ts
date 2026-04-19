@@ -5,7 +5,7 @@ import { eq, and, lt, or, sql } from "drizzle-orm";
 import { StravaClient } from "@/lib/strava/client";
 import { GarminClient, GarminUploadError } from "@/lib/garmin/client";
 import { convertToTcx } from "@/lib/fit/converter";
-import { getValidStravaToken, getValidGarminToken } from "@/lib/strava/token";
+import { getValidStravaToken } from "@/lib/strava/token";
 import { sendSyncFailureEmail } from "@/lib/email";
 
 const MAX_ATTEMPTS = 3;
@@ -66,10 +66,7 @@ async function processJob(job: typeof syncEvents.$inferSelect) {
   const { id, userId, stravaActivityId, attempts } = job;
 
   try {
-    const [stravaToken, garminToken] = await Promise.all([
-      getValidStravaToken(userId),
-      getValidGarminToken(userId),
-    ]);
+    const stravaToken = await getValidStravaToken(userId);
 
     const strava = new StravaClient(stravaToken);
     const [activity, streams] = await Promise.all([
@@ -78,7 +75,7 @@ async function processJob(job: typeof syncEvents.$inferSelect) {
     ]);
 
     const tcxContent = convertToTcx(activity, streams);
-    const garmin = new GarminClient(garminToken);
+    const garmin = new GarminClient();
 
     let garminActivityId: string;
     try {
