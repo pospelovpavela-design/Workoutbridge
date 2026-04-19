@@ -19,7 +19,6 @@ export async function POST(req: NextRequest) {
 
   const userId = session.user.id!;
 
-  // Count total remaining before this batch
   const [{ remaining }] = await db
     .select({ remaining: count() })
     .from(syncEvents)
@@ -27,13 +26,11 @@ export async function POST(req: NextRequest) {
 
   if (remaining === 0) return NextResponse.json({ processed: 0, remaining: 0 });
 
-  // Pick up to BATCH pending jobs
   const jobs = await db
     .select()
     .from(syncEvents)
     .where(and(eq(syncEvents.userId, userId), eq(syncEvents.status, "pending"), lt(syncEvents.attempts, 3)))
-    .limit(BATCH)
-    .for("update", { skipLocked: true });
+    .limit(BATCH);
 
   if (jobs.length === 0) return NextResponse.json({ processed: 0, remaining });
 
@@ -47,7 +44,6 @@ export async function POST(req: NextRequest) {
 
   const stravaToken = await getValidStravaToken(userId).catch(() => null);
   if (!stravaToken) {
-    // Revert to pending
     await db
       .update(syncEvents)
       .set({ status: "pending" })
@@ -57,8 +53,9 @@ export async function POST(req: NextRequest) {
 
   const strava = new StravaClient(stravaToken);
   const garmin = new GarminClient();
-
+  const errors: string[] = [];
   let processed = 0;
+
   for (const job of jobs) {
     try {
       const [activity, streams] = await Promise.all([
@@ -91,6 +88,7 @@ export async function POST(req: NextRequest) {
       processed++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      errors.push(msg);
       const newAttempts = job.attempts + 1;
       await db
         .update(syncEvents)
@@ -99,5 +97,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ processed, remaining: remaining - processed });
+  const [{ newRemaining }] = await db
+    .select({ newRemaining: count() })
+    .from(syncEvents)
+    .where(and(eq(syncEvents.userId, userId), eq(syncEvents.status, "pending")));
+
+  return NextResponse.json({ processed, remaining: newRemaining, errors });
 }
