@@ -2,10 +2,11 @@ import { auth } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { providerTokens, syncEvents } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, count } from "drizzle-orm";
 // Garmin uses email/password from env vars — no OAuth DB token needed
 import Link from "next/link";
 import { BulkSyncButton } from "./BulkSyncButton";
+import { ProcessAllButton } from "./ProcessAllButton";
 
 export default async function DashboardPage({
   searchParams,
@@ -18,7 +19,7 @@ export default async function DashboardPage({
   const { connected, error } = await searchParams;
   const userId = session.user.id!;
 
-  const [tokens, recentSyncs] = await Promise.all([
+  const [tokens, recentSyncs, [{ pendingCount }]] = await Promise.all([
     db.select().from(providerTokens).where(eq(providerTokens.userId, userId)),
     db
       .select()
@@ -26,6 +27,10 @@ export default async function DashboardPage({
       .where(eq(syncEvents.userId, userId))
       .orderBy(desc(syncEvents.syncedAt))
       .limit(10),
+    db
+      .select({ pendingCount: count() })
+      .from(syncEvents)
+      .where(and(eq(syncEvents.userId, userId), eq(syncEvents.status, "pending"))),
   ]);
 
   const stravaConnected = tokens.some((t) => t.provider === "strava");
@@ -72,10 +77,19 @@ export default async function DashboardPage({
       </section>
 
       {stravaConnected && (
-        <section className="space-y-2">
+        <section className="space-y-3">
           <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Past Workouts</h2>
-          <p className="text-xs text-gray-600">Queue all your Strava history for a one-time sync to Garmin → NRC.</p>
-          <BulkSyncButton />
+          {pendingCount > 0 ? (
+            <>
+              <p className="text-xs text-gray-500">{pendingCount} workouts queued and ready to sync.</p>
+              <ProcessAllButton total={pendingCount} />
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-gray-600">Queue all your Strava history for a one-time sync to Garmin → NRC.</p>
+              <BulkSyncButton />
+            </>
+          )}
         </section>
       )}
 
