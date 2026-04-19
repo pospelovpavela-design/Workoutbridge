@@ -1,18 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth/session";
+import { cookies } from "next/headers";
 import { db } from "@/db";
 import { providerTokens } from "@/db/schema";
 
-export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.redirect(new URL("/login", req.url));
+function appUrl(req: NextRequest, path: string) {
+  const base = process.env.NEXTAUTH_URL?.replace(/\/$/, "")
+    ?? `https://${req.headers.get("x-forwarded-host") ?? "localhost:3000"}`;
+  return `${base}${path}`;
+}
 
+export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
+  const stateParam = searchParams.get("state");
+
+  let userId: string | null = null;
+  let nonce: string | null = null;
+  try {
+    const decoded = JSON.parse(Buffer.from(stateParam ?? "", "base64url").toString());
+    userId = decoded.userId ?? null;
+    nonce = decoded.nonce ?? null;
+  } catch {
+    return NextResponse.redirect(appUrl(req, "/dashboard?error=garmin_state"));
+  }
+
+  const cookieStore = await cookies();
+  const storedNonce = cookieStore.get("garmin_oauth_nonce")?.value;
+  cookieStore.delete("garmin_oauth_nonce");
+
+  if (!storedNonce || storedNonce !== nonce || !userId) {
+    return NextResponse.redirect(appUrl(req, "/dashboard?error=garmin_state"));
+  }
 
   if (error || !code) {
-    return NextResponse.redirect(new URL("/dashboard?error=garmin_denied", req.url));
+    return NextResponse.redirect(appUrl(req, "/dashboard?error=garmin_denied"));
   }
 
   const tokenRes = await fetch("https://sso.garmin.com/sso/oauth2/token", {
@@ -31,11 +53,10 @@ export async function GET(req: NextRequest) {
   });
 
   if (!tokenRes.ok) {
-    return NextResponse.redirect(new URL("/dashboard?error=garmin_token", req.url));
+    return NextResponse.redirect(appUrl(req, "/dashboard?error=garmin_token"));
   }
 
   const token = await tokenRes.json();
-  const userId = session.user.id!;
   const expiresAt = new Date(Date.now() + token.expires_in * 1000);
 
   await db
@@ -57,5 +78,5 @@ export async function GET(req: NextRequest) {
       },
     });
 
-  return NextResponse.redirect(new URL("/dashboard?connected=garmin", req.url));
+  return NextResponse.redirect(appUrl(req, "/dashboard?connected=garmin"));
 }
