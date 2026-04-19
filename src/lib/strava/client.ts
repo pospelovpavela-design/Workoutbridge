@@ -29,6 +29,14 @@ export type StravaActivity = {
 export class StravaClient {
   constructor(private accessToken: string) {}
 
+  async listActivities(page = 1, perPage = 200): Promise<StravaActivity[]> {
+    const { data } = await axios.get(`${BASE}/athlete/activities`, {
+      params: { page, per_page: perPage },
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
+    return data;
+  }
+
   async getActivity(id: number): Promise<StravaActivity> {
     const { data } = await axios.get(`${BASE}/activities/${id}`, {
       headers: { Authorization: `Bearer ${this.accessToken}` },

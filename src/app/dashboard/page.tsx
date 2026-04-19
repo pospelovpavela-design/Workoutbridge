@@ -5,6 +5,7 @@ import { providerTokens, syncEvents } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 // Garmin uses email/password from env vars — no OAuth DB token needed
 import Link from "next/link";
+import { BulkSyncButton } from "./BulkSyncButton";
 
 export default async function DashboardPage({
   searchParams,
@@ -69,6 +70,14 @@ export default async function DashboardPage({
         </div>
         {garminConfigured && <NrcOnboardingCard />}
       </section>
+
+      {stravaConnected && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Past Workouts</h2>
+          <p className="text-xs text-gray-600">Queue all your Strava history for a one-time sync to Garmin → NRC.</p>
+          <BulkSyncButton />
+        </section>
+      )}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
